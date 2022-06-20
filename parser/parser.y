@@ -810,6 +810,7 @@ import (
 	IndexPartSpecificationListOpt   "Optional list of index column name or expression"
 	InsertValues			"Rest part of INSERT/REPLACE INTO statement"
 	JoinTable 			"join table"
+	JoinSpecification 		"join specification"
 	JoinType			"join type"
 	LocationLabelList		"location label name list"
 	LikeEscapeOpt 			"like escape option"
@@ -3809,6 +3810,10 @@ JoinTable:
 	{
 		$$ = &ast.Join{Left: $1.(ast.ResultSetNode), Right: $3.(ast.ResultSetNode), Tp: ast.CrossJoin}
 	}
+|	TableRef JoinType OuterOpt "JOIN" TableRef JoinSpecification
+	{
+		$$ = &ast.Join{Left: $1.(ast.ResultSetNode), Right: $5.(ast.ResultSetNode), Tp: $2.(ast.JoinType), On: $6.(*ast.OnCondition)}
+	}
 	/* Project 2: your code here.
 	 * You can see details about JoinTable in https://dev.mysql.com/doc/refman/8.0/en/join.html
 	 *
@@ -3819,6 +3824,12 @@ JoinTable:
          * }
          *
 	 */
+
+JoinSpecification:
+	"ON" Expression
+	{
+		$$ = &ast.OnCondition{Expr: $2}
+	}
 
 JoinType:
 	"LEFT"
