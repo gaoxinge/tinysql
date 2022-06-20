@@ -48,6 +48,20 @@ const (
 // TableSplitKeyLen is the length of key 't{table_id}' which is used for table split.
 const TableSplitKeyLen = 1 + idLen
 
+func byteEqual(left []byte, right []byte) bool {
+	if len(left) != len(right) {
+		return false
+	}
+
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
 // TablePrefix returns table's prefix 't'.
 func TablePrefix() []byte {
 	return tablePrefix
@@ -98,6 +112,24 @@ func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	 *   5. understanding the coding rules is a prerequisite for implementing this function,
 	 *      you can learn it in the projection 1-2 course documentation.
 	 */
+
+	if len(key) != RecordRowKeyLen {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong length", key)
+		return
+	}
+
+	if !byteEqual(key[:tablePrefixLength], tablePrefix) {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong table prefix", key)
+		return
+	}
+	_, tableID, _ = codec.DecodeInt(key[tablePrefixLength:TableSplitKeyLen])
+
+	if !byteEqual(key[TableSplitKeyLen:prefixLen], recordPrefixSep) {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong record prefix", key)
+		return
+	}
+	_, handle, _ = codec.DecodeInt(key[prefixLen:RecordRowKeyLen])
+
 	return
 }
 
@@ -148,6 +180,25 @@ func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues
 	 *   5. understanding the coding rules is a prerequisite for implementing this function,
 	 *      you can learn it in the projection 1-2 course documentation.
 	 */
+
+	if len(key) < prefixLen+idLen {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong length", key)
+		return
+	}
+
+	if !byteEqual(key[:tablePrefixLength], tablePrefix) {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong table prefix", key)
+		return
+	}
+	_, tableID, _ = codec.DecodeInt(key[tablePrefixLength:TableSplitKeyLen])
+
+	if !byteEqual(key[TableSplitKeyLen:prefixLen], indexPrefixSep) {
+		err = errInvalidRecordKey.GenWithStack("invalid key %v with wrong index prefix", key)
+		return
+	}
+	_, indexID, _ = codec.DecodeInt(key[prefixLen:prefixLen+idLen])
+
+	indexValues = key[prefixLen+idLen:]
 	return tableID, indexID, indexValues, nil
 }
 
