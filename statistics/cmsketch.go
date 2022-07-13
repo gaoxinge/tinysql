@@ -14,7 +14,9 @@
 package statistics
 
 import (
+	"math"
 	"reflect"
+	"sort"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
@@ -26,6 +28,9 @@ import (
 
 // CMSketch is used to estimate point queries.
 // Refer: https://en.wikipedia.org/wiki/Count-min_sketch
+//        https://pingcap.com/zh/blog/tidb-source-code-reading-12
+//        https://zhuanlan.zhihu.com/p/369981005
+// Test: cd statistics && go test -check.f TestCMSketch TestCMSketchCoding
 type CMSketch struct {
 	depth int32
 	width int32
@@ -50,6 +55,12 @@ func (c *CMSketch) InsertBytes(bytes []byte) {
 // insertBytesByCount adds the bytes value into the TopN (if value already in TopN) or CM Sketch by delta, this does not updates c.defaultValue.
 func (c *CMSketch) insertBytesByCount(bytes []byte, count uint64) {
 	// TODO: implement the insert method.
+	c.count += count
+	h1, h2 := murmur3.Sum128(bytes)
+	for i := 0; int32(i) < c.depth; i++ {
+		j := (h1 + h2*uint64(i)) % uint64(c.width)
+		c.table[i][j] += uint32(count)
+	}
 }
 
 func (c *CMSketch) queryValue(sc *stmtctx.StatementContext, val types.Datum) (uint64, error) {
@@ -68,7 +79,30 @@ func (c *CMSketch) QueryBytes(d []byte) uint64 {
 
 func (c *CMSketch) queryHashValue(h1, h2 uint64) uint64 {
 	// TODO: implement the query method.
-	return uint64(0)
+	vals := make([]int, c.depth)
+	for i := 0; int32(i) < c.depth; i++ {
+		j := (h1 + h2*uint64(i)) % uint64(c.width)
+		noise := (c.count - uint64(c.table[i][j])) / (uint64(c.width) - 1)
+		if uint64(c.table[i][j]) < noise {
+			vals[i] = 0
+		} else {
+			vals[i] = int(c.table[i][j] - uint32(noise))
+		}
+	}
+	sort.Ints(vals)
+	return uint64(vals[(c.depth-1)/2] + (vals[c.depth/2]-vals[(c.depth-1)/2])/2)
+}
+
+func (c *CMSketch) queryHashValue0(h1, h2 uint64) uint64 {
+	// TODO: implement the query method.
+	val := math.MaxInt
+	for i := 0; int32(i) < c.depth; i++ {
+		j := (h1 + h2*uint64(i)) % uint64(c.width)
+		if val > int(c.table[i][j]) {
+			val = int(c.table[i][j])
+		}
+	}
+	return uint64(val)
 }
 
 // MergeCMSketch merges two CM Sketch.
