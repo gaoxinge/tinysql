@@ -45,10 +45,6 @@ func (b *builtinStringIsNullSig) vectorized() bool {
 	return true
 }
 
-func (b *builtinStrcmpSig) vectorized() bool {
-	return true
-}
-
 func (b *builtinStrcmpSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) error {
 	n := input.NumRows()
 	leftBuf, err := b.bufAllocator.get(types.ETString, n)
@@ -80,7 +76,7 @@ func (b *builtinStrcmpSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) 
 	return nil
 }
 
-func (b *builtinLengthSig) vectorized() bool {
+func (b *builtinStrcmpSig) vectorized() bool {
 	return true
 }
 
@@ -88,5 +84,28 @@ func (b *builtinLengthSig) vectorized() bool {
 // See https://dev.mysql.com/doc/refman/5.7/en/string-functions.html
 func (b *builtinLengthSig) vecEvalInt(input *chunk.Chunk, result *chunk.Column) error {
 	/* Your code here */
+	n := input.NumRows()
+	buf, err := b.bufAllocator.get(types.ETString, n)
+	if err != nil {
+		return err
+	}
+	defer b.bufAllocator.put(buf)
+	if err := b.args[0].VecEvalString(b.ctx, input, buf); err != nil {
+		return err
+	}
+
+	result.ResizeInt64(n, false)
+	i64s := result.Int64s()
+	for i := 0; i < n; i++ {
+		if buf.IsNull(i) {
+			result.SetNull(i, true)
+		} else {
+			i64s[i] = int64(len(buf.GetString(i)))
+		}
+	}
 	return nil
+}
+
+func (b *builtinLengthSig) vectorized() bool {
+	return true
 }
